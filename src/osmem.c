@@ -19,10 +19,11 @@ struct block_meta *global_base;
 void coalesce_blocks(void)
 {
 	struct block_meta *curr = global_base;
-
+	//sefule te plimbi in lista si ori aduni blocurile intre ele
+	//ori nu faci nimic
 	while (curr != NULL && curr->next != NULL) {
 		if (curr->status == STATUS_FREE && curr->next->status == STATUS_FREE) {
-			curr->size += curr->next->size + META_SIZE;
+			curr->size += curr->next->size;
 			curr->next = curr->next->next;
 			if (curr->next != NULL)
 				curr->next->prev = curr;
@@ -39,18 +40,17 @@ struct block_meta *split_block(struct block_meta *bloc, size_t size)
 
 	if (bloc == NULL)
 		return NULL;
-	//printf("%lu cine bl size  %lu \n", bloc->size - size, size);
-	if (bloc->size - perfect_size < META_SIZE + 1)//aparent daca pun +1 merge si split last 
+	if (bloc->size - perfect_size < META_SIZE + 1)//aparent daca pun +1 merge si split last
 		//printf("crapa 1\n");
 		return NULL;
 
-	// printf("REAL SPLIT %lu  %lu si perf_size %lu\n", size, bloc->size, perfect_size);
-	//  se supara aici
+	//printf("REAL SPLIT %lu  %lu si perf_size %lu\n", size, bloc->size, perfect_size);
+	//se supara aici
 	struct block_meta *new_bloc = (struct block_meta *)((char *)bloc + perfect_size); // merg dincolo de payload
 
 	new_bloc->size = abs(bloc->size - perfect_size); // ce ramane??
 	bloc->size = perfect_size;
-	// printf("din split size bloc si newbl: %lu %lu\n", bloc->size, new_bloc->size); // ok??!
+	//printf("din split size bloc si newbl: %lu %lu\n", bloc->size, new_bloc->size); // ok??!
 	new_bloc->status = STATUS_FREE;
 	// printf("ajung oare aiic?\n");
 	new_bloc->next = bloc->next;
@@ -62,7 +62,7 @@ struct block_meta *split_block(struct block_meta *bloc, size_t size)
 }
 
 void sterg_bloc(struct block_meta **head, struct block_meta *nod)
-{
+{	//sda vibes
 	if (*head == NULL || nod == NULL)
 		return;
 	if (*head == nod) {
@@ -78,7 +78,6 @@ struct block_meta *request_space(struct block_meta *last, size_t size)
 {
 	struct block_meta *bloc = sbrk(0);
 
-	// bloc = brk(0);)
 	void *req = sbrk(size);
 
 	DIE((void *)bloc != req, "sbrk failed");
@@ -120,9 +119,7 @@ struct block_meta *find_free_bloc(struct block_meta **last, size_t size)
 {
 	struct block_meta *curr = global_base;
 
-	//printf("size din find: %lu si curr %lu \n",size, curr->size);
 	while (curr && (curr->status != STATUS_FREE || curr->size - META_SIZE < size)) {
-		// printf("ceva\n");
 		*last = curr;
 		curr = curr->next;
 	}
@@ -141,7 +138,6 @@ struct block_meta *expand_block(struct block_meta *block, size_t new_size)
 	//printf("\nHEELLOOOOOOO\n");
 	size_t additional_size = ALIGN(new_size - block->size + META_SIZE);
 
-	//printf("din expand ce adaug add : %lu din %lu si %lu \n", additional_size, new_size, block->size);
 	void *c = (void *)((char *)block + block->size);
 
 	c = sbrk(additional_size);
@@ -150,9 +146,7 @@ struct block_meta *expand_block(struct block_meta *block, size_t new_size)
 	// block, c, (long)(c) - (long)((void *)((char *)block + block->size)));
 
 	block->size += additional_size;
-	// printf("AFTER SBRK block size %lu \n", block->size);
 	block->status = STATUS_ALLOC;
-	// printf("bye %lu\n", block->size);
 	return block;
 }
 void *os_malloc(size_t size)
@@ -191,7 +185,6 @@ void *os_malloc(size_t size)
 
 				// TE DUCI DUPA PREALLOC
 				if (verif->size >= block_size) {
-					printf("NU LAM SPLITUIT  \n");
 					verif->next = NULL;
 					verif->prev = NULL;
 					verif->size = block_size;
@@ -202,7 +195,7 @@ void *os_malloc(size_t size)
 
 			return (void *)(current + 1);
 		} else {
-			// printf("pas2\n");
+			//printf("pas2\n");
 			if (global_base == NULL) {
 				current = request_space_mmap(NULL, block_size);
 				if (current == NULL)
@@ -211,19 +204,20 @@ void *os_malloc(size_t size)
 				global_base = current;
 			} else {
 				struct block_meta *last = global_base;
+
 				coalesce_blocks();
 				current = find_free_bloc(&last, size);
 
-				if (current == NULL) {
-					if (last->status == STATUS_FREE) {
-						// printf("\n INAINTE DE EXPAND %lu din last si %lu size\n", last->size, size);
-						current = expand_block(last, size);
-						if (current != NULL)
-							return (void *)(current + 1);
-					}
-					current = request_space_mmap(last, block_size);
-					if (current == NULL)
-						return NULL;
+			if (current == NULL) {
+				if (last->status == STATUS_FREE) {
+					// printf("\n INAINTE DE EXPAND %lu din last si %lu size\n", last->size, size);
+					current = expand_block(last, size);
+					if (current != NULL)
+						return (void *)(current + 1);
+				}
+				current = request_space_mmap(last, block_size);
+				if (current == NULL)
+					return NULL;
 				} else {
 					current->status = STATUS_MAPPED;
 				}
@@ -234,33 +228,33 @@ void *os_malloc(size_t size)
 		// printf("AM PREALOCAT SUNT PE ELSE %lu %lu\n", size, block_size);
 		if (size < MMAP_THRESHOLD) {
 			struct block_meta *last = global_base;
+
 			coalesce_blocks();
 			current = find_free_bloc(&last, size);
-			// printf("currentul %p \n", current);
 			if (current == NULL) {
 				if (last->status == STATUS_FREE) {
-					// printf("\n INAINTE DE EXPAND %lu din last si %lu size\n", last->size, size);
+				//printf("\n INAINTE DE EXPAND %lu din last si %lu size\n", last->size, size);
 					current = expand_block(last, size);
 					if (current != NULL)
 						return (void *)(current + 1);
 				}
 				current = request_space(last, block_size);
-				//	printf("adresa cureent brk: %p\n", current);
+				//printf("adresa cureent brk: %p\n", current);
 				if (current == NULL)
 
 					return NULL;
 			} else {
 				current->status = STATUS_ALLOC;
 				struct block_meta *copie = split_block(current, size);
-				// if (copie == NULL)
-				// return (void *)(current + 1);
+				//if (copie == NULL)
+				//return (void *)(current + 1);
 			}
 			//printf("sizeul lui current cu brk si status: %d %d\n", current->size, current->status);
-			// current = split_block(current,block_size);
+			//current = split_block(current,block_size);
 			return (void *)(current + 1);
 		}
 		size_t perfect_size = ALIGN(size + META_SIZE);
-		// void *newptr = mmap(NULL, perfect_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+		//void *newptr = mmap(NULL, perfect_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 		if (global_base == NULL) {
 			current = request_space_mmap(NULL, perfect_size);
 			if (current == NULL)
@@ -269,6 +263,7 @@ void *os_malloc(size_t size)
 			global_base = current;
 		} else {
 			struct block_meta *last = global_base;
+
 			coalesce_blocks();
 			current = find_free_bloc(&last, size);
 			if (current == NULL) {
@@ -291,9 +286,8 @@ void *os_malloc(size_t size)
 
 void os_free(void *ptr)
 {
-	if (ptr == NULL) {
+	if (ptr == NULL)
 		return;
-	}
 	// printf("aaaaa");
 	if (global_base == NULL) // nam nimic in lista
 		return;
@@ -302,18 +296,17 @@ void os_free(void *ptr)
 	// deci daca fac cu while imi f**e cumva ultimul bloc ca nu il sterge
 	if (last == NULL) // nu lam gasit??
 		return;
-	// printf("last vs ptr %p %p \n", last+1, ptr);
 	// printf("\nlast status free: %d status prealloc %d\n", last->status, global_base->status);
 	if (last->status == STATUS_FREE)
 		return; // nu dau free la ceva ce e deja free
 	if (last->status == STATUS_ALLOC) {
-		// printf("SUNT PE STATUS ALOC: %lu \n", last->size);
 		last->status = STATUS_FREE;
 		return;
 	}
 	if (last->status == STATUS_MAPPED) { // dar trb sa nu pierd lista
 		sterg_bloc(&global_base, last);
 		int cod = munmap(last, last->size);
+
 		DIE(cod == -1, "munmap");
 		return;
 	}
@@ -326,6 +319,7 @@ void *os_calloc(size_t nmemb, size_t size)
 	size_t perfect_size = ALIGN(total_size + META_SIZE);
 	size_t treshold_size = sysconf(_SC_PAGE_SIZE);
 	struct block_meta *calloc_block;
+
 	if (perfect_size > treshold_size) {
 		// calloc mai hardcore asa
 		if (global_base == NULL) {
@@ -341,11 +335,11 @@ void *os_calloc(size_t nmemb, size_t size)
 		return (void *)(calloc_block + 1);
 	}
 	void *ptr = os_malloc(total_size);
+
 	if (ptr == NULL)
 		return NULL;
-	if (ptr != NULL) {
+	if (ptr != NULL)
 		memset(ptr, 0, total_size);
-	}
 	return ptr;
 }
 
@@ -360,14 +354,18 @@ void *os_realloc(void *ptr, size_t size)
 		return NULL;
 	}
 	size_t perfect_size = ALIGN(size + META_SIZE);
-	struct block_meta *block = (struct block_meta *)ptr - 1;
-	size_t block_size = block->size;
-	if (block->status == STATUS_FREE)
+
+	struct block_meta *bloc = (struct block_meta *)ptr - 1;
+
+	size_t bloc_size = bloc->size;
+
+	if (bloc->status == STATUS_FREE)
 		return NULL;
-	if (block_size >= size) {
-		struct block_meta *splitted_block;
-		splitted_block = split_block(block, size);
-		return (void *)(splitted_block + 1);
+	if (bloc_size >= size) {
+		struct block_meta *splitted_bloc;
+
+		splitted_bloc = split_block(bloc, size);
+		return (void *)(splitted_bloc + 1);
 	}
 	return NULL;
 }
